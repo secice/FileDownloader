@@ -2,6 +2,38 @@
 
 > [ Change log in english](https://github.com/lingochamp/FileDownloader/blob/master/CHANGELOG.md)
 
+## Version 1.7.7
+
+- 修复: FileDownloadThreadPool 可能会抛出 ArrayIndexOutOfBoundsException 和 ClassCastException。 closes #1258
+- 修复: 从 1.6.x 升级到 1.7.x 后恢复之前的下载任务时出现 416 错误。
+- 修复: Demo 中下载通知示例无法显示通知。closes #1224
+- 修复: blockComplete 可能会在主线程中回调。closes #1069
+- 修复: NoDatabaseImpl 中 SparseArray 非线程安全问题。closes #1225 
+
+## Version 1.7.6
+
+_2019-02-20_
+
+#### 修复
+
+- 修复: 在Android O以及更高版本手机上，在所有任务结束后自动将前台服务关闭. closes #1096
+- 修复: 修复'Context.startForegroundService() did not then call Service.startForeground()'的问题. closes #1104
+- 修复: 确保在调用停止任务后，运行中的通知被关闭. closes #1136
+- 修复: 修复在重试时小概率NPE. closes #1100
+
+## Version 1.7.5
+
+_2018-08-03_
+
+#### 修复
+
+- 修复: 修复在Android O的系统上，当应用不在前台，并且不在白名单的时候，由于下载服务无法通过`JobScheduler`来执行下载事务，只能通过`startService`，引起 "Not allowed to start service Intent..." 的问题。 closes #1078
+
+#### Enhance
+
+- 提升实用性: 支持`Content-Disposition`中的非UTF-8编码。 closes #1057
+- 提高实用性: 处理了阿里云服务错误反馈`416`的情况`。 closes #1050
+
 ## Version 1.7.4
 
 _2018-05-19_

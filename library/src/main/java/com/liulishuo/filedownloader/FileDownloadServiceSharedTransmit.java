@@ -18,6 +18,7 @@ package com.liulishuo.filedownloader;
 import android.app.Notification;
 import android.content.Context;
 import android.content.Intent;
+import android.os.Build;
 
 import com.liulishuo.filedownloader.event.DownloadServiceConnectChangedEvent;
 import com.liulishuo.filedownloader.model.FileDownloadHeader;
@@ -25,6 +26,9 @@ import com.liulishuo.filedownloader.services.FDServiceSharedHandler;
 import com.liulishuo.filedownloader.services.FDServiceSharedHandler.FileDownloadServiceSharedConnection;
 import com.liulishuo.filedownloader.services.FileDownloadService.SharedMainProcessService;
 import com.liulishuo.filedownloader.util.DownloadServiceNotConnectedHelper;
+import com.liulishuo.filedownloader.util.ExtraKeys;
+import com.liulishuo.filedownloader.util.FileDownloadLog;
+import com.liulishuo.filedownloader.util.FileDownloadUtils;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -41,6 +45,8 @@ class FileDownloadServiceSharedTransmit implements
         IFileDownloadServiceProxy, FileDownloadServiceSharedConnection {
 
     private static final Class<?> SERVICE_CLASS = SharedMainProcessService.class;
+
+    private boolean runServiceForeground = false;
 
     @Override
     public boolean start(String url, String path, boolean pathAsDirectory,
@@ -142,7 +148,14 @@ class FileDownloadServiceSharedTransmit implements
             }
         }
         Intent i = new Intent(context, SERVICE_CLASS);
-        context.startService(i);
+        runServiceForeground = FileDownloadUtils.needMakeServiceForeground(context);
+        i.putExtra(ExtraKeys.IS_FOREGROUND, runServiceForeground);
+        if (runServiceForeground) {
+            if (FileDownloadLog.NEED_LOG) FileDownloadLog.d(this, "start foreground service");
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) context.startForegroundService(i);
+        } else  {
+            context.startService(i);
+        }
     }
 
     @Override
@@ -170,6 +183,7 @@ class FileDownloadServiceSharedTransmit implements
         }
 
         handler.stopForeground(removeNotification);
+        runServiceForeground = false;
     }
 
     @Override
@@ -197,6 +211,11 @@ class FileDownloadServiceSharedTransmit implements
         }
 
         handler.clearAllTaskData();
+    }
+
+    @Override
+    public boolean isRunServiceForeground() {
+        return runServiceForeground;
     }
 
     private FDServiceSharedHandler handler;

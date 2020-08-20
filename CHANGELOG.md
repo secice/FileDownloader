@@ -2,6 +2,38 @@
 
 > [中文迭代日志](https://github.com/lingochamp/FileDownloader/blob/master/CHANGELOG-ZH.md)
 
+## Version 1.7.7
+
+- Fix: FileDownloadThreadPool may throw ArrayIndexOutOfBoundsException & ClassCastException. closes #1258
+- Fix: Resume a task may occur 416 problem after upgrading from 1.6.x to 1.7.x.
+- Fix: Cannot show notification in demo. closes #1224
+- Fix: The callback blockComplete may be invoked in main thread.closes #1069
+- Fix: The thread unsafe problem of SparseArray in NoDatabaseImpl. closes #1225 
+
+## Version 1.7.6
+
+_2019-02-20_
+
+#### Fix
+
+- Fix: stop foreground service after all tasks finished in Android O. closes #1096
+- Fix: fix 'Context.startForegroundService() did not then call Service.startForeground()' issue. closes #1104
+- Fix: insure all foreground service running notification is canceled when pause download. closes #1136
+- Fix: fix tiny possibility npe during retry. closes #1100
+
+## Version 1.7.5
+
+_2018-08-03_
+
+#### Fix
+
+- Fix: fix raise "Not allowed to start service Intent..." issue when starting DownloadService on Android O and the application isn't on the foreground and also not on the whitelist, because we can't use `JobScheduler` to handle the download affair. closes #1078
+
+#### Enhance
+
+- Improve Practicability: support character set and the launguage encoding for `Content-Disposition`. closes #1057
+- Improve Practicability: cover the error response code 416 from aliyun repo. closes #1050
+
 ## Version 1.7.4
 
 _2018-05-19_

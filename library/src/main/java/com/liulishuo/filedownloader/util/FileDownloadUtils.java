@@ -23,6 +23,7 @@ import android.net.ConnectivityManager;
 import android.net.NetworkInfo;
 import android.os.Build;
 import android.os.Environment;
+import android.os.PowerManager;
 import android.os.StatFs;
 import android.text.TextUtils;
 
@@ -39,6 +40,9 @@ import java.io.File;
 import java.io.IOException;
 import java.io.UnsupportedEncodingException;
 import java.net.HttpURLConnection;
+import java.net.MalformedURLException;
+import java.net.URL;
+import java.net.URLDecoder;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.List;
@@ -140,11 +144,19 @@ public class FileDownloadUtils {
             return defaultSaveRootPath;
         }
 
-        if (FileDownloadHelper.getAppContext().getExternalCacheDir() == null) {
-            return Environment.getDownloadCacheDirectory().getAbsolutePath();
-        } else {
-            //noinspection ConstantConditions
+        boolean useExternalStorage = false;
+        if (FileDownloadHelper.getAppContext().getExternalCacheDir() != null) {
+            if (Environment.getExternalStorageState().equals("mounted")) {
+                if (Environment.getExternalStorageDirectory().getFreeSpace() > 0) {
+                    useExternalStorage = true;
+                }
+            }
+        }
+
+        if (useExternalStorage) {
             return FileDownloadHelper.getAppContext().getExternalCacheDir().getAbsolutePath();
+        } else {
+            return FileDownloadHelper.getAppContext().getCacheDir().getAbsolutePath();
         }
     }
 
@@ -393,11 +405,12 @@ public class FileDownloadUtils {
                 + INTERNAL_DOCUMENT_NAME, OLD_FILE_CONVERTED_FILE_NAME);
     }
 
-    private static final Pattern CONTENT_DISPOSITION_QUOTED_PATTERN =
-            Pattern.compile("attachment;\\s*filename\\s*=\\s*\"([^\"]*)\"");
+    // note on https://tools.ietf.org/html/rfc5987
+    private static final Pattern CONTENT_DISPOSITION_WITH_ASTERISK_PATTERN =
+            Pattern.compile("attachment;\\s*filename\\*\\s*=\\s*\"*([^\"]*)'\\S*'([^\"]*)\"*");
     // note on http://www.ietf.org/rfc/rfc1806.txt
-    private static final Pattern CONTENT_DISPOSITION_NON_QUOTED_PATTERN =
-            Pattern.compile("attachment;\\s*filename\\s*=\\s*(.*)");
+    private static final Pattern CONTENT_DISPOSITION_WITHOUT_ASTERISK_PATTERN =
+            Pattern.compile("attachment;\\s*filename\\s*=\\s*\"*([^\"\\n]*)\"*");
 
     public static long parseContentRangeFoInstanceLength(String contentRange) {
         if (contentRange == null) return -1;
@@ -429,16 +442,18 @@ public class FileDownloadUtils {
         }
 
         try {
-            Matcher m = CONTENT_DISPOSITION_QUOTED_PATTERN.matcher(contentDisposition);
+            Matcher m = CONTENT_DISPOSITION_WITH_ASTERISK_PATTERN.matcher(contentDisposition);
             if (m.find()) {
-                return m.group(1);
+                String charset = m.group(1);
+                String encodeFileName = m.group(2);
+                return URLDecoder.decode(encodeFileName, charset);
             }
 
-            m = CONTENT_DISPOSITION_NON_QUOTED_PATTERN.matcher(contentDisposition);
+            m = CONTENT_DISPOSITION_WITHOUT_ASTERISK_PATTERN.matcher(contentDisposition);
             if (m.find()) {
                 return m.group(1);
             }
-        } catch (IllegalStateException ex) {
+        } catch (IllegalStateException | UnsupportedEncodingException ignore) {
             // This function is defined as returning null when it can't parse the header
         }
         return null;
@@ -647,6 +662,10 @@ public class FileDownloadUtils {
                 getResponseHeaderField("Content-Disposition"));
 
         if (TextUtils.isEmpty(filename)) {
+            filename = findFileNameFromUrl(url);
+        }
+
+        if (TextUtils.isEmpty(filename)) {
             filename = FileDownloadUtils.generateFileName(url);
         } else if (filename.contains("../")) {
             throw new FileDownloadSecurityException(FileDownloadUtils.formatString(
@@ -760,7 +779,7 @@ public class FileDownloadUtils {
             if (fileLength < currentOffset
                     || (totalLength != TOTAL_VALUE_IN_CHUNKED_RESOURCE  // not chunk transfer
                     && (fileLength > totalLength || currentOffset >= totalLength))
-                    ) {
+            ) {
                 // dirty data.
                 if (FileDownloadLog.NEED_LOG) {
                     FileDownloadLog.d(FileDownloadUtils.class, "can't continue %d dirty data"
@@ -821,5 +840,53 @@ public class FileDownloadUtils {
 
     public static String defaultUserAgent() {
         return formatString("FileDownloader/%s", BuildConfig.VERSION_NAME);
+    }
+
+    private static boolean isAppOnForeground(Context context) {
+        ActivityManager activityManager = (ActivityManager) context.getApplicationContext()
+                .getSystemService(Context.ACTIVITY_SERVICE);
+        if (activityManager == null) return false;
+
+        List<ActivityManager.RunningAppProcessInfo> appProcesses =
+                activityManager.getRunningAppProcesses();
+        if (appProcesses == null) return false;
+
+        PowerManager pm = (PowerManager) context.getSystemService(Context.POWER_SERVICE);
+        if (pm == null) return false;
+        if (Build.VERSION.SDK_INT > Build.VERSION_CODES.KITKAT) {
+            if (!pm.isInteractive()) return false;
+        } else {
+            if (!pm.isScreenOn()) return false;
+        }
+
+        String packageName = context.getApplicationContext().getPackageName();
+        for (ActivityManager.RunningAppProcessInfo appProcess : appProcesses) {
+            // The name of the process that this object is associated with.
+            if (appProcess.processName.equals(packageName) && appProcess.importance
+                    == ActivityManager.RunningAppProcessInfo.IMPORTANCE_FOREGROUND) {
+                return true;
+            }
+
+        }
+        return false;
+    }
+
+    public static boolean needMakeServiceForeground(Context context) {
+        return Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && !isAppOnForeground(context);
+    }
+
+    static String findFileNameFromUrl(String url) {
+        if (url == null || url.isEmpty()) {
+            return null;
+        }
+        try {
+            final URL parseUrl = new URL(url);
+            final String path = parseUrl.getPath();
+            String fileName = path.substring(path.lastIndexOf('/') + 1);
+            if (fileName.isEmpty()) return null;
+            return fileName;
+        } catch (MalformedURLException ignore) {
+        }
+        return null;
     }
 }

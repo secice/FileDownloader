@@ -17,11 +17,20 @@
 package com.liulishuo.filedownloader.services;
 
 import android.annotation.SuppressLint;
+import android.app.NotificationChannel;
+import android.app.NotificationManager;
 import android.app.Service;
+import android.content.Context;
 import android.content.Intent;
+import android.os.Build;
 import android.os.IBinder;
 
+import com.liulishuo.filedownloader.PauseAllMarker;
+import com.liulishuo.filedownloader.download.CustomComponentHolder;
+import com.liulishuo.filedownloader.i.IFileDownloadIPCService;
+import com.liulishuo.filedownloader.util.ExtraKeys;
 import com.liulishuo.filedownloader.util.FileDownloadHelper;
+import com.liulishuo.filedownloader.util.FileDownloadLog;
 import com.liulishuo.filedownloader.util.FileDownloadProperties;
 import com.liulishuo.filedownloader.util.FileDownloadUtils;
 
@@ -38,6 +47,7 @@ import java.lang.ref.WeakReference;
 public class FileDownloadService extends Service {
 
     private IFileDownloadServiceHandler handler;
+    private PauseAllMarker pauseAllMarker;
 
     @Override
     public void onCreate() {
@@ -60,17 +70,48 @@ public class FileDownloadService extends Service {
         } else {
             handler = new FDServiceSeparateHandler(new WeakReference<>(this), manager);
         }
+
+        PauseAllMarker.clearMarker();
+        pauseAllMarker = new PauseAllMarker((IFileDownloadIPCService) handler);
+        pauseAllMarker.startPauseAllLooperCheck();
     }
 
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
         handler.onStartCommand(intent, flags, startId);
+        inspectRunServiceForeground(intent);
         return START_STICKY;
+    }
+
+    private void inspectRunServiceForeground(Intent intent) {
+        if (intent == null) return;
+        final boolean isForeground = intent.getBooleanExtra(ExtraKeys.IS_FOREGROUND, false);
+        if (isForeground) {
+            ForegroundServiceConfig config = CustomComponentHolder.getImpl()
+                    .getForegroundConfigInstance();
+            if (config.isNeedRecreateChannelId()
+                    && Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                NotificationChannel notificationChannel = new NotificationChannel(
+                        config.getNotificationChannelId(),
+                        config.getNotificationChannelName(),
+                        NotificationManager.IMPORTANCE_LOW
+                );
+                NotificationManager notificationManager =
+                        (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
+                if (notificationManager == null) return;
+                notificationManager.createNotificationChannel(notificationChannel);
+            }
+            startForeground(config.getNotificationId(), config.getNotification(this));
+            if (FileDownloadLog.NEED_LOG) {
+                FileDownloadLog.d(this, "run service foreground with config: %s", config);
+            }
+        }
     }
 
     @Override
     public void onDestroy() {
-        handler.onDestroy();
+        pauseAllMarker.stopPauseAllLooperCheck();
+        stopForeground(true);
         super.onDestroy();
     }
 
